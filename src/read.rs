@@ -16,6 +16,69 @@ use mqtt::{
 };
 
 pub trait MqttRead: ReadBytesExt {
+     fn read_packet_with_len(&mut self) -> Result<(Packet, usize)> {
+        let hd = try!(self.read_u8());
+        let len = try!(self.read_remaining_length());
+        let header = try!(Header::new(hd, len));
+        println!("Header {:?}", header);
+        if len == 0 {
+            // no payload packets
+            return match header.typ {
+                PacketType::Pingreq => Ok((Packet::Pingreq, 2)),
+                PacketType::Pingresp => Ok((Packet::Pingresp, 2)),
+                _ => Err(Error::PayloadRequired)
+            };
+        }
+        let mut raw_packet = self.take(len as u64);
+
+        match header.typ {
+            PacketType::Connect => Ok((Packet::Connect(try!(raw_packet.read_connect(header))), 2 + len)),
+            PacketType::Connack => Ok((Packet::Connack(try!(raw_packet.read_connack(header))), 2 + len)),
+            PacketType::Publish => Ok((Packet::Publish(try!(raw_packet.read_publish(header))), 2 + len)),
+            PacketType::Puback => {
+                if len != 2 {
+                    return Err(Error::PayloadSizeIncorrect)
+                }
+                let pid = try!(raw_packet.read_u16::<BigEndian>());
+                Ok((Packet::Puback(PacketIdentifier(pid)), 2 + len))
+            },
+            PacketType::Pubrec => {
+                if len != 2 {
+                    return Err(Error::PayloadSizeIncorrect)
+                }
+                let pid = try!(raw_packet.read_u16::<BigEndian>());
+                Ok((Packet::Pubrec(PacketIdentifier(pid)), len))
+            },
+            PacketType::Pubrel => {
+                if len != 2 {
+                    return Err(Error::PayloadSizeIncorrect)
+                }
+                let pid = try!(raw_packet.read_u16::<BigEndian>());
+                Ok((Packet::Pubrel(PacketIdentifier(pid)), 2 + len))
+            },
+            PacketType::Pubcomp => {
+                if len != 2 {
+                    return Err(Error::PayloadSizeIncorrect)
+                }
+                let pid = try!(raw_packet.read_u16::<BigEndian>());
+                Ok((Packet::Pubcomp(PacketIdentifier(pid)), 2 + len))
+            },
+            PacketType::Subscribe => Ok((Packet::Subscribe(try!(raw_packet.read_subscribe(header))), 2 + len)),
+            PacketType::Suback => Ok((Packet::Suback(try!(raw_packet.read_suback(header))), 2 + len)),
+            PacketType::Unsubscribe => Ok((Packet::Unsubscribe(try!(raw_packet.read_unsubscribe(header))), 2 + len)),
+            PacketType::Unsuback => {
+                if len != 2 {
+                    return Err(Error::PayloadSizeIncorrect)
+                }
+                let pid = try!(raw_packet.read_u16::<BigEndian>());
+                Ok((Packet::Unsuback(PacketIdentifier(pid)), 2 + len))
+            },
+            PacketType::Pingreq => Err(Error::IncorrectPacketFormat),
+            PacketType::Pingresp => Err(Error::IncorrectPacketFormat),
+            _ => Err(Error::UnsupportedPacketType)
+        }
+    }
+
     fn read_packet(&mut self) -> Result<Packet> {
         let hd = try!(self.read_u8());
         let len = try!(self.read_remaining_length());
