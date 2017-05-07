@@ -26,6 +26,7 @@ pub trait MqttRead: ReadBytesExt {
             return match header.typ {
                 PacketType::Pingreq => Ok((Packet::Pingreq, 2)),
                 PacketType::Pingresp => Ok((Packet::Pingresp, 2)),
+                PacketType::Disconnect => Ok((Packet::Disconnect, 2)),
                 _ => Err(Error::PayloadRequired)
             };
         }
@@ -89,6 +90,7 @@ pub trait MqttRead: ReadBytesExt {
             return match header.typ {
                 PacketType::Pingreq => Ok(Packet::Pingreq),
                 PacketType::Pingresp => Ok(Packet::Pingresp),
+                PacketType::Disconnect => Ok(Packet::Disconnect),
                 _ => Err(Error::PayloadRequired)
             };
         }
@@ -216,7 +218,6 @@ pub trait MqttRead: ReadBytesExt {
         };
         let mut payload = Vec::new();
         try!(self.read_to_end(&mut payload));
-
         Ok(Box::new(
             Publish {
                 dup: header.dup(),
