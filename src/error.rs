@@ -3,7 +3,6 @@ use std::io;
 use std::fmt;
 use std::error;
 use std::string::FromUtf8Error;
-use byteorder;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -35,15 +34,6 @@ impl From<io::Error> for Error {
 impl From<FromUtf8Error> for Error {
     fn from(_: FromUtf8Error) -> Error {
         Error::TopicNameMustNotContainNonUtf8
-    }
-}
-
-impl From<byteorder::Error> for Error {
-    fn from(err: byteorder::Error) -> Error {
-        match err {
-            byteorder::Error::UnexpectedEOF => Error::UnexpectedEof,
-            byteorder::Error::Io(err) => Error::Io(err)
-        }
     }
 }
 
