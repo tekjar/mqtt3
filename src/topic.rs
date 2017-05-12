@@ -1,4 +1,6 @@
 use std::vec::IntoIter;
+use std::string::ToString;
+
 use {Error, Result};
 
 const TOPIC_PATH_DELIMITER: char = '/';
@@ -112,6 +114,48 @@ impl TopicPath {
             Some(topic) => *topic == Topic::MultiWildcard,
             None => false
         }
+    }
+
+    // match with a concrete topic path
+    pub fn is_match(&self, concrete: &TopicPath) -> bool {
+        // argument should be a concrete path
+        if concrete.wildcards {
+            return false
+        }
+
+        let mut tmp = concrete.clone();
+        let len = self.len();
+
+        // if last element of self is '#', truncate concrete topic till
+        // prev index of '#' in self
+        // e.g 1. a/b/c/d, 2. a/b/#. convert 1 to a/b/#
+        // e.g 1. z/b/c/d, 2. a/b/#. convert 1 to z/b/#
+        // e.g 1. a/b 2. a/b/#. corner case: 1, 2 should match. convert 1 to a/b/#
+        if let Some(v) = self.topics.last() {
+            match *v {
+                Topic::MultiWildcard => {
+                    tmp.topics.truncate(len-1);
+                    tmp.topics.push(Topic::MultiWildcard);
+                }
+                _ => (),
+            }
+        }
+
+        // note: after this point, both the topics should be of same len
+        if self.topics.len() != tmp.topics.len() {
+            return false
+        }
+
+        // match till last element of self topic (self)
+        // e.g a/b/c/+/e (self), a/b/c/d/e/f/g (concrete)
+        // match till e of self
+        for (index, topic) in self.topics.iter().enumerate() {
+            if !topic.fit(&tmp.topics[index]) {
+                return false
+            }
+        }
+
+        true
     }
 
     pub fn from_str<T: AsRef<str>>(path: T) -> Result<TopicPath> {
@@ -240,5 +284,56 @@ mod test {
         assert!(TopicPath::from_str("+wrong").is_err());
         assert!(TopicPath::from_str("wro#ng").is_err());
         assert!(TopicPath::from_str("w/r/o/n/g+").is_err());
+    }
+
+    #[test]
+    fn match_concrete_topics_with_wildcard_topics() {
+        let concrete1 = TopicPath::from_str("a/b/c").unwrap();
+        let concrete2 = TopicPath::from_str("a/b/c").unwrap();
+
+        assert!(concrete1.is_match(&concrete2));
+
+        let concrete1 = TopicPath::from_str("a/b/c").unwrap();
+        let concrete2 = TopicPath::from_str("a/b/c/d").unwrap();
+
+        assert!(!concrete1.is_match(&concrete2));
+
+        let concrete = TopicPath::from_str("a/b/c").unwrap();
+        let wild = TopicPath::from_str("a/+/c").unwrap();
+
+        assert!(wild.is_match(&concrete));
+
+        let concrete = TopicPath::from_str("a/b/c").unwrap();
+        let wild = TopicPath::from_str("d/e/f").unwrap();
+
+        assert!(!wild.is_match(&concrete));
+
+        let concrete = TopicPath::from_str("a/b/c/d/e").unwrap();
+        let wild = TopicPath::from_str("a/+/c/+/e").unwrap();
+
+        assert!(wild.is_match(&concrete));
+
+        let concrete = TopicPath::from_str("a/b/c/d/e").unwrap();
+        let wild = TopicPath::from_str("a/b/#").unwrap();
+
+        assert!(wild.is_match(&concrete));
+
+        let concrete = TopicPath::from_str("z/b/c/d/e").unwrap();
+        let wild = TopicPath::from_str("a/b/#").unwrap();
+
+        assert!(!wild.is_match(&concrete));
+
+        // # should also match emptys also. these topics should match
+        let concrete = TopicPath::from_str("a/b").unwrap();
+        let wild = TopicPath::from_str("a/b/#").unwrap();
+
+        assert!(wild.is_match(&concrete));
+
+
+        // but '+' should'nt match emptys. these topics should'nt match
+        let concrete = TopicPath::from_str("a/b").unwrap();
+        let wild = TopicPath::from_str("a/b/+").unwrap();
+
+        assert!(!wild.is_match(&concrete));
     }
 }
