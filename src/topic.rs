@@ -181,13 +181,24 @@ impl TopicPath {
         if !valid {
             return Err(Error::InvalidTopicPath);
         }
-        // check for wildcards
-        let wildcards = topics.iter().any(|topic| {
+
+        let len = topics.len();
+        let mut wildcards = false;
+
+        for (index, topic) in topics.iter().enumerate() {
             match *topic {
-                Topic::SingleWildcard | Topic::MultiWildcard => true,
-                _ => false
+                Topic::SingleWildcard => wildcards = true,
+                Topic::MultiWildcard => {
+                    // topics paths like a/#/c shouldn't be allowed
+                    // multi wildcard is only allowed at last index
+                    if index != len - 1 {
+                        return Err(Error::InvalidTopicPath)
+                    }
+                    wildcards = true;
+                }
+                _ => ()
             }
-        });
+        }
 
         Ok(TopicPath {
             path: String::from(path.as_ref()),
@@ -284,6 +295,7 @@ mod test {
         assert!(TopicPath::from_str("+wrong").is_err());
         assert!(TopicPath::from_str("wro#ng").is_err());
         assert!(TopicPath::from_str("w/r/o/n/g+").is_err());
+        assert!(TopicPath::from_str("wrond/#/path").is_err());
     }
 
     #[test]
