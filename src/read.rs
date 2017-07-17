@@ -18,10 +18,11 @@ use mqtt::{
 pub trait MqttRead: ReadBytesExt {
      fn read_packet_with_len(&mut self) -> Result<(Packet, usize)> {
         let hd = try!(self.read_u8());
-        let len = try!(self.read_remaining_length());
-        let header = try!(Header::new(hd, len));
+        let remaining_len = try!(self.read_remaining_length());
+        let header = try!(Header::new(hd, remaining_len));
+        let header_len = header.header_len();
 
-        if len == 0 {
+        if remaining_len == 0 {
             // no payload packets
             return match header.typ {
                 PacketType::Pingreq => Ok((Packet::Pingreq, 2)),
@@ -30,49 +31,49 @@ pub trait MqttRead: ReadBytesExt {
                 _ => Err(Error::PayloadRequired)
             };
         }
-        let mut raw_packet = self.take(len as u64);
+        let mut raw_packet = self.take(remaining_len as u64);
 
         match header.typ {
-            PacketType::Connect => Ok((Packet::Connect(try!(raw_packet.read_connect(header))), 2 + len)),
-            PacketType::Connack => Ok((Packet::Connack(try!(raw_packet.read_connack(header))), 2 + len)),
-            PacketType::Publish => Ok((Packet::Publish(try!(raw_packet.read_publish(header))), 2 + len)),
+            PacketType::Connect => Ok((Packet::Connect(try!(raw_packet.read_connect(header))), header_len + remaining_len)),
+            PacketType::Connack => Ok((Packet::Connack(try!(raw_packet.read_connack(header))), header_len + remaining_len)),
+            PacketType::Publish => Ok((Packet::Publish(try!(raw_packet.read_publish(header))), header_len + remaining_len)),
             PacketType::Puback => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
-                Ok((Packet::Puback(PacketIdentifier(pid)), 2 + len))
+                Ok((Packet::Puback(PacketIdentifier(pid)), header_len + remaining_len))
             },
             PacketType::Pubrec => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
-                Ok((Packet::Pubrec(PacketIdentifier(pid)), 2 + len))
+                Ok((Packet::Pubrec(PacketIdentifier(pid)), header_len + remaining_len))
             },
             PacketType::Pubrel => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
-                Ok((Packet::Pubrel(PacketIdentifier(pid)), 2 + len))
+                Ok((Packet::Pubrel(PacketIdentifier(pid)), header_len + remaining_len))
             },
             PacketType::Pubcomp => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
-                Ok((Packet::Pubcomp(PacketIdentifier(pid)), 2 + len))
+                Ok((Packet::Pubcomp(PacketIdentifier(pid)), header_len + remaining_len))
             },
-            PacketType::Subscribe => Ok((Packet::Subscribe(try!(raw_packet.read_subscribe(header))), 2 + len)),
-            PacketType::Suback => Ok((Packet::Suback(try!(raw_packet.read_suback(header))), 2 + len)),
-            PacketType::Unsubscribe => Ok((Packet::Unsubscribe(try!(raw_packet.read_unsubscribe(header))), 2 + len)),
+            PacketType::Subscribe => Ok((Packet::Subscribe(try!(raw_packet.read_subscribe(header))), header_len + remaining_len)),
+            PacketType::Suback => Ok((Packet::Suback(try!(raw_packet.read_suback(header))), header_len + remaining_len)),
+            PacketType::Unsubscribe => Ok((Packet::Unsubscribe(try!(raw_packet.read_unsubscribe(header))), header_len + remaining_len)),
             PacketType::Unsuback => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
-                Ok((Packet::Unsuback(PacketIdentifier(pid)), 2 + len))
+                Ok((Packet::Unsuback(PacketIdentifier(pid)), header_len + remaining_len))
             },
             PacketType::Pingreq => Err(Error::IncorrectPacketFormat),
             PacketType::Pingresp => Err(Error::IncorrectPacketFormat),
@@ -82,10 +83,10 @@ pub trait MqttRead: ReadBytesExt {
 
     fn read_packet(&mut self) -> Result<Packet> {
         let hd = try!(self.read_u8());
-        let len = try!(self.read_remaining_length());
-        let header = try!(Header::new(hd, len));
+        let remaining_len = try!(self.read_remaining_length());
+        let header = try!(Header::new(hd, remaining_len));
         //println!("Header {:?}", header);
-        if len == 0 {
+        if remaining_len == 0 {
             // no payload packets
             return match header.typ {
                 PacketType::Pingreq => Ok(Packet::Pingreq),
@@ -94,35 +95,35 @@ pub trait MqttRead: ReadBytesExt {
                 _ => Err(Error::PayloadRequired)
             };
         }
-        let mut raw_packet = self.take(len as u64);
+        let mut raw_packet = self.take(remaining_len as u64);
 
         match header.typ {
             PacketType::Connect => Ok(Packet::Connect(try!(raw_packet.read_connect(header)))),
             PacketType::Connack => Ok(Packet::Connack(try!(raw_packet.read_connack(header)))),
             PacketType::Publish => Ok(Packet::Publish(try!(raw_packet.read_publish(header)))),
             PacketType::Puback => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
                 Ok(Packet::Puback(PacketIdentifier(pid)))
             },
             PacketType::Pubrec => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
                 Ok(Packet::Pubrec(PacketIdentifier(pid)))
             },
             PacketType::Pubrel => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
                 Ok(Packet::Pubrel(PacketIdentifier(pid)))
             },
             PacketType::Pubcomp => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
@@ -132,7 +133,7 @@ pub trait MqttRead: ReadBytesExt {
             PacketType::Suback => Ok(Packet::Suback(try!(raw_packet.read_suback(header)))),
             PacketType::Unsubscribe => Ok(Packet::Unsubscribe(try!(raw_packet.read_unsubscribe(header)))),
             PacketType::Unsuback => {
-                if len != 2 {
+                if remaining_len != 2 {
                     return Err(Error::PayloadSizeIncorrect)
                 }
                 let pid = try!(raw_packet.read_u16::<BigEndian>());
